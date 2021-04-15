@@ -7,7 +7,8 @@ import numpy as np
 
 import time
 import wandb
-import pytorch_fid
+from pytorch_fid.inception import InceptionV3
+from pytorch_fid.fid_score import *
 
 import torch
 import torch.nn as nn
@@ -86,6 +87,9 @@ class Trainer(object):
 
         # test
         self.test_batch_size = cfg.test_batch_size
+        # fid
+        self.fid_dim = cfg.fid_dim
+        self.fid_batch_size = cfg.fid_batch_size
         
         # build model
         self.make_model()
@@ -146,6 +150,8 @@ class Trainer(object):
         losses_d = AverageMeter()
         losses_g = AverageMeter()
 
+        wandb.init(project='GAN_practice', mode="online", config=self.cfg)
+
         model_G = self.model_G
         model_D = self.model_D
 
@@ -159,6 +165,9 @@ class Trainer(object):
         num_iter = 0
 
         fixed_noise = torch.randn(self.batch_size, self.latent_dim, 1, 1, device=self.device)
+
+        wandb.watch(model_G)
+        wandb.watch(model_D)
 
         for i in pbar:
             data_time.update(time.time() - end)
@@ -228,15 +237,29 @@ class Trainer(object):
             if ((i+1) % self.ckpt_every == 0) or (i==self.max_iter):
                 save_name_g = os.path.join(self.g_ckpt_dir, 'it{:06d}-G.pt'.format(num_iter))
                 save_name_d = os.path.join(self.d_ckpt_dir, 'it{:06d}-D.pt'.format(num_iter))
-                print('Saving models in each directory')
+
+                print('Saving models in each directory...')
                 torch.save({'model_G_state_dict': self.model_G.state_dict()}, save_name_g)
                 torch.save({'model_D_state_dict': self.model_D.state_dict()}, save_name_d)
+
+                print('Make log with wandb...')
+                wandb.log({
+                    "Loss of Generator": loss_G,
+                    "Loss of Discriminator": loss_D,
+                    "Iteration": num_iter
+                })
 
             if (i+1) % self.sample_every == 0:
                 with torch.no_grad():
                     sample = model_G(fixed_noise)
                     file_path = os.path.join(self.sample_dir, '{}.jpg'.format(i+1))
                 save_image(sample, file_path)
+
+            if (i+1) % self.eval_every == 0:
+                fid = calculate_fid_given_paths([self.img_dir, self.sample_dir], batch_size=self.fid_batch_size, device=self.device, dims=self.fid_dim)
+                print('The FID score is in {}: '.format(i))
+                print(fid)
+
 
     def test(self):
         noise = torch.randn(self.test_batch_size, self.latent_dim, 1, 1, device=self.device)
@@ -250,7 +273,3 @@ class Trainer(object):
             file_path = os.path.join(self.test_dir, 'test-{}.jpg'.format(i[2:7]))
             test_sample = model_t(noise)
             save_image(test_sample, file_path)
-            
-        
-
-        
