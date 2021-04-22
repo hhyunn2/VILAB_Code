@@ -109,8 +109,8 @@ class Trainer(object):
         self.model_G = Generator(self.latent_dim, self.max_g_dim)
         self.model_D = Discriminator(self.max_d_dim)
 
-        self.set_g_optim('Adam', self.model_G)
-        self.set_d_optim('Adam', self.model_D)
+        self.set_g_optim(self.g_optimizer, self.model_G)
+        self.set_d_optim(self.d_optimizer, self.model_D)
 
     def set_g_optim(self, optim, generator):
         '''For Generator optimizer'''
@@ -129,6 +129,7 @@ class Trainer(object):
             self.d_optim = torch.optim.SGD(discriminator.parameters(), lr=self.lr, momentum=self.momentum)
 
     def get_scheduler(self, optimizer):
+        '''Make scheduler (not adopted in DCGAN)'''
         if self.scheduler_name=='ReduceLROnPlateau':
             scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=self.factor, patience=self.patience, verbose=True, eps=self.eps)
         elif self.scheduler_name=='CosineAnnealingLR':
@@ -244,9 +245,10 @@ class Trainer(object):
 
                 print('Make log with wandb...')
                 wandb.log({
-                    "Loss of Generator": loss_G,
-                    "Loss of Discriminator": loss_D,
-                    "Iteration": num_iter
+                    "Loss of Generator": losses_g,
+                    "Loss of Discriminator": losses_d,
+                    "Iteration": num_iter,
+                    "Batch time": batch_time
                 })
 
             if (i+1) % self.sample_every == 0:
